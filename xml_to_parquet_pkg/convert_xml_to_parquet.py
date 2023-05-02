@@ -44,7 +44,7 @@ def json_decoder(obj):
         return obj.strftime("%Y-%m-%d %H:%M:%S.%f")
     if isinstance(obj, set):
         return list(obj)
-    raise TypeError(repr(obj) + " is not JSON serializable")
+    raise TypeError(f"{repr(obj)} is not JSON serializable")
 
 
 class NestedParqConverter(xmlschema.XMLSchemaConverter):
@@ -91,10 +91,8 @@ class NestedParqConverter(xmlschema.XMLSchemaConverter):
         :return: A dictionary-based data structure containing the decoded data.
         """
         if data.attributes:
-            self.attr_prefix = xsd_element.local_name + "@"
-            result_dict = self.dict(
-                [(k, v) for k, v in self.map_attributes(data.attributes)]
-            )
+            self.attr_prefix = f"{xsd_element.local_name}@"
+            result_dict = self.dict(list(self.map_attributes(data.attributes)))
         else:
             result_dict = self.dict()
 
@@ -106,10 +104,7 @@ class NestedParqConverter(xmlschema.XMLSchemaConverter):
         if data.content:
             for name, value, xsd_child in self.map_content(data.content):
                 if value:
-                    if xsd_child.local_name:
-                        name = xsd_child.local_name
-                    else:
-                        name = name[2 + len(xsd_child.namespace) :]
+                    name = xsd_child.local_name if xsd_child.local_name else name[2 + len(xsd_child.namespace) :]
 
                     if xsd_child.is_single():
                         if hasattr(xsd_child, "type") and (
@@ -138,10 +133,7 @@ class NestedParqConverter(xmlschema.XMLSchemaConverter):
                                 result_dict[name] = self.list([value])
                             except AttributeError:
                                 result_dict[name] = self.list([value])
-        if level == 0:
-            return self.dict([(xsd_element.local_name, result_dict)])
-        else:
-            return result_dict
+        return self.dict([(xsd_element.local_name, result_dict)]) if level == 0 else result_dict
 
 
 def open_file(zip, filename):
@@ -150,10 +142,7 @@ def open_file(zip, filename):
     :param filename: name of new file
     :return: file handlers
     """
-    if zip:
-        return gzip.open(filename, "wb")
-    else:
-        return open(filename, "wb")
+    return gzip.open(filename, "wb") if zip else open(filename, "wb")
 
 
 def parse_xml(
@@ -180,15 +169,12 @@ def parse_xml(
     :return: data found and processed
     """
 
-    xparents = dict()
-    excludeparents = dict()
+    xparents = {}
+    excludeparents = {}
     currentxpath = []
     json_data = ""
 
-    if not xpaths_set:
-        elem_active = True
-    else:
-        elem_active = False
+    elem_active = not xpaths_set
 
     context = ET.iterparse(xml_file, events=("start", "end"))
 
@@ -230,8 +216,6 @@ def parse_xml(
         my_json = json.dumps(my_dict, default=json_decoder)
     except Exception as ex:
         _logger.debug(ex)
-        pass
-
     if not my_dict:
         return
 
@@ -243,7 +227,7 @@ def parse_xml(
     else:
         arrow_data = arrow_json.read_json(io.BytesIO(bytes(my_json, "utf-8")))
 
-    _logger.debug("Saving to: " + output_file)
+    _logger.debug(f"Saving to: {output_file}")
 
     arrow_parquet.write_table(arrow_data, output_file)
 
@@ -336,15 +320,7 @@ def parse_file(
 
         for i in range(len(zip_file_list)):
             with zip_file.open(zip_file_list[i].filename) as xml_file:
-                if file_info:
-                    file_info_meta = {
-                        "filename": zip_file_list[i].filename,
-                        "date_time": zip_file_list[i].date_time,
-                        "compress_size": zip_file_list[i].compress_size,
-                        "zipfile": os.path.basename(input_file),
-                    }
-                else:
-                    file_info_meta = None
+                file_info_meta = { "filename": zip_file_list[i].filename, "date_time": zip_file_list[i].date_time, "compress_size": zip_file_list[i].compress_size, "zipfile": os.path.basename(input_file), } if file_info else None
 
                 parse_xml(
                     xml_file,
@@ -360,15 +336,7 @@ def parse_file(
 
     elif input_file.endswith(".gz"):
         with gzip.open(input_file) as xml_file:
-
-            if file_info:
-                file_info_meta = {
-                    "filename": os.path.basename(input_file),
-                    "modified": datetime.fromtimestamp(os.path.getmtime(input_file)),
-                    "size": os.path.getsize(input_file),
-                }
-            else:
-                file_info_meta = None
+            file_info_meta = { "filename": os.path.basename(input_file), "modified": datetime.fromtimestamp(os.path.getmtime(input_file)), "size": os.path.getsize(input_file), } else None
 
             parse_xml(
                 xml_file,
@@ -462,22 +430,20 @@ def convert_xml_to_parquet(
 
     # open target files
     file_list = list(
-        set(
-            [
-                f
-                for _files in [
-                    glob.glob(xml_files[x]) for x in range(0, len(xml_files))
-                ]
-                for f in _files
+        {
+            f
+            for _files in [
+                glob.glob(xml_files[x]) for x in range(len(xml_files))
             ]
-        )
+            for f in _files
+        }
     )
     file_count = len(file_list)
 
     if multi > 1:
         parse_queue_pool = Pool(processes=multi)
 
-    _logger.info("Processing " + str(file_count) + " files")
+    _logger.info(f"Processing {file_count} files")
 
     if 1 < len(file_list) <= 1000:
         file_list.sort(key=os.path.getsize, reverse=True)
