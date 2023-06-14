@@ -106,10 +106,7 @@ class NestedParqConverter(xmlschema.XMLSchemaConverter):
         if data.content:
             for name, value, xsd_child in self.map_content(data.content):
                 if value:
-                    if xsd_child.local_name:
-                        name = xsd_child.local_name
-                    else:
-                        name = name[2 + len(xsd_child.namespace) :]
+                    name = xsd_child.local_name if xsd_child.local_name else name[2 + len(xsd_child.namespace) :]
 
                     if xsd_child.is_single():
                         if hasattr(xsd_child, "type") and (
@@ -138,10 +135,7 @@ class NestedParqConverter(xmlschema.XMLSchemaConverter):
                                 result_dict[name] = self.list([value])
                             except AttributeError:
                                 result_dict[name] = self.list([value])
-        if level == 0:
-            return self.dict([(xsd_element.local_name, result_dict)])
-        else:
-            return result_dict
+        return self.dict([(xsd_element.local_name, result_dict)]) if level == 0 else result_dict
 
 
 def open_file(zip, filename):
@@ -150,10 +144,7 @@ def open_file(zip, filename):
     :param filename: name of new file
     :return: file handlers
     """
-    if zip:
-        return gzip.open(filename, "wb")
-    else:
-        return open(filename, "wb")
+    return gzip.open(filename, "wb") if zip else open(filename, "wb")
 
 
 def parse_xml(
@@ -185,11 +176,7 @@ def parse_xml(
     currentxpath = []
     json_data = ""
 
-    if not xpaths_set:
-        elem_active = True
-    else:
-        elem_active = False
-
+    elem_active = True if not xpaths_set else False
     context = ET.iterparse(xml_file, events=("start", "end"))
 
     # Parse XML
@@ -235,16 +222,8 @@ def parse_xml(
     if not my_dict:
         return
 
-    if block_size:
-        arrow_data = arrow_json.read_json(
-            io.BytesIO(bytes(my_json, "utf-8")),
-            read_options=arrow_json.ReadOptions(block_size=block_size),
-        )
-    else:
-        arrow_data = arrow_json.read_json(io.BytesIO(bytes(my_json, "utf-8")))
-
+    arrow_data = arrow_json.read_json(io.BytesIO(bytes(my_json, "utf-8")), read_options=arrow_json.ReadOptions(block_size=block_size)) if block_size else arrow_json.read_json(io.BytesIO(bytes(my_json, "utf-8")))
     _logger.debug("Saving to: " + output_file)
-
     arrow_parquet.write_table(arrow_data, output_file)
 
 
@@ -438,9 +417,7 @@ def convert_xml_to_parquet(
 
     """
 
-    formatter = logging.Formatter(
-        "%(levelname)s - %(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-    )
+    formatter = logging.Formatter("%(levelname)s - %(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
     ch = logging.StreamHandler()
     ch.setFormatter(formatter)
@@ -493,19 +470,10 @@ def convert_xml_to_parquet(
         if output_file.endswith(".gz"):
             output_file = output_file[:-3]
 
-        if output_file.endswith(".tar"):
+        if output_file.endswith(".tar") or output_file.endswith(".zip") or output_file.endswith(".xml"):
             output_file = output_file[:-4]
 
-        if output_file.endswith(".zip"):
-            output_file = output_file[:-4]
-
-        if output_file.endswith(".xml"):
-            output_file = output_file[:-4]
-
-        if target_path:
-            output_file = os.path.join(target_path, output_file)
-        else:
-            output_file = os.path.join(path, output_file)
+        output_file = os.path.join(target_path, output_file) if target_path else os.path.join(path, output_file)
 
         if multi > 1:
             parse_queue_pool.apply_async(
